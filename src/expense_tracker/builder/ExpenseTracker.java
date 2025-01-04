@@ -32,7 +32,6 @@ public class ExpenseTracker extends ExpenseTrackerUtility {
 
 			}
 		}
-		
 		read.close();
 	}
 	
@@ -40,10 +39,4 @@ public class ExpenseTracker extends ExpenseTrackerUtility {
 		var launch = true;
 		new ExpenseTracker(launch);
 	}
-	
-	public static void main(String[] args) {
-		run();
-	}
-
-
 }
