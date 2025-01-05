@@ -1,5 +1,6 @@
 package expense_tracker.builder;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Scanner;
 
@@ -14,27 +15,32 @@ public class ExpenseTrackerUtility {
 		final static String DELETE = "delete";
 		final static String LIST = "list";
 		final static String SUMMARY = "summary";
+		final static String SETBUDGET = "set-budget";
 	}
 
-	protected Scanner read = new Scanner(System.in);
+	static protected Scanner read = new Scanner(System.in);
 
 	// return the user input with a prompt defined in parameter
-	protected String prompt(String label) {
+	static protected String prompt(String label) {
 		System.out.print(label);
 		return read.nextLine();
 	}
 
 	// return false if the user input is not valid and not matched to any regex pattern
 	protected boolean invalid(String input) {
-		//patterns
-		var add = "add --description (\"\\S.*\\S|\\S{1}\") --amount \\d{1,9}";  //add
+		// patterns
+		var add = "add --description (?:\"\\S.*\\S|\\S{1}\") --amount (?:\\d{1,9}|-\\d{1,9})";  // add
 		var update = "update --id \\d+ " + add.substring(4);
-		var list = "list"; //list
-		var sum = "summary"; //summary
-		var del = "delete --id \\d+";  // delete
-		var fsum = sum + " --month \\d+"; // summary with argument
+		var list = "list";                // list
+		var sum = "summary";              // summary
+		var del = "delete --id \\d+";     // delete
+		var fsum = sum + " --month (?:\\d+|-\\d+)"; // summary with argument
+		var flist = list + " --category " + Category.cPattern; // list with argument
+		
+		var budget = "set-budget (\\d{1,9}|-\\d{1,9}) --month \\1"; // set-budget
+		
 		//combine all pattern
-		var pattern = add + "|" + update + "|" + list + "|" + sum + "|" + del + "|" + fsum;
+		var pattern = add + "|" + update + "|" + list + "|" + sum + "|" + del + "|" + fsum + "|" + flist + "|" + budget;
 		return !input.matches(pattern);
 	}
 
@@ -73,15 +79,49 @@ public class ExpenseTrackerUtility {
 		return Integer.parseInt(input.split(" ")[2]); 
 	}
 
+	// return true if input is more than one word
+	private static boolean hasArg(String input) {
+		return input.split(" ").length > 1;
+	}
+
+	// for category data
+	protected class Category {
+
+		// category input pattern to use
+		private static String cPattern = "([a-zA-Z])+|\\1{1}";
+
+		// return false if pattern not match 
+		private static boolean invalid(String input) {
+			return !input.matches(cPattern);
+		}
+
+		private static String input() {
+			var c = prompt("$ expense-category> ");
+			// revalidate if pattern not match
+			while (Category.invalid(c)) {
+				c = prompt("Invalid Input\n\n$ expense-category> ");
+			}
+			return c;
+		}
+
+	}
+
 	// for add command (e.g, add --description "Food" --amount 100)
 	protected class Add {
 
 		protected static void saveTo(List<Expense> e, String input) {
-			var description = getDescription(input);
-			var amount = getAmount(input);
-			var id = Expense.idAutoIncrement();
 
-			e.add(new Expense(id, description, amount));
+			if (getAmount(input) < 0) {
+				System.out.println("\nNegative amount not allowed.\n");
+				return;
+			}
+
+			if (getAmount(input) == 0) {
+				System.out.println("\nAmount zero not allowed\n");
+				return;
+			}
+			var id = Expense.idAutoIncrement();
+			e.add(new Expense(id, getDescription(input), Category.input(), getAmount(input)));
 		}
 	}
 
@@ -90,15 +130,27 @@ public class ExpenseTrackerUtility {
 
 		protected static void saveTo(List<Expense> e, String input) {
 
+			if (getAmount(input) < 0) {
+				System.out.println("\nNegative amount not allowed.\n");
+				return;
+			}
+
+			if (getAmount(input) == 0) {
+				System.out.println("\nAmount zero not allowed\n");
+				return;
+			}
+
 			var id = getId(input);
 			Expense ee = findId(e, id); // expenseToUpdate
 
 			if (ee != null) {
 				ee.setDescription(getDescription(input));
 				ee.setAmount(getAmount(input));
+				ee.setCategory(Category.input());
+
 				System.out.printf("%nExpense updated successfully (ID: %s)%n%n", ee.getId());
 			} else {
-				System.out.println("%nExpense Id not found.%n");
+				System.out.println("\nNon-existent expense ID.\n");
 			}
 		}
 	}
@@ -112,25 +164,28 @@ public class ExpenseTrackerUtility {
 			if (ee != null) {
 				e.remove(ee);
 				System.out.printf("\nExpense deleted successfully (ID: %s)\n\n", ee.getId());
-			} else System.out.println("\nExpense Id not found.\n");
+			} else System.out.println("\nNon-existent expense ID.\n");
 		}
 	}
 
 	// for list command (i.e, list)
 	protected class Expense_List {
 
-		// display all expense record in a tabular format
-		protected static void show(List<Expense> e) {
-			var dL = 11; // default description field length -> | Description |
-			var aL = 6;  // default amount field length      -> | Amount |
-			var iL = 2;  // default id field length          -> | ID |
-			var ddL = 4; // default date field length        -> | Date |
+		// display all expense record in a tabular format                        
+		private static void showAll(List<Expense> e) {
 
-			for (Expense ee : e) {
-				var ee_dL = ee.getDescription().length(); // record description length
+			var dL = 11; // default description field length -> | Description |  
+			var aL = 6;  // default amount field length      -> | Amount |  
+			var iL = 2;  // default id field length          -> | ID |      
+			var ddL = 4; // default date field length        -> | Date |    
+			var cL = 8;  // default category field length    -> | Category |
+
+			for (Expense ee : e) { 
+				var ee_dL = ee.getDescription().length();                // record description length
 				var ee_aL = String.valueOf(ee.getAmount()).length() + 1; // record amount length
-				var ee_iL = String.valueOf(ee.getId()).length(); // record id length
-				var ee_ddL = ee.getDateAsString().length(); // record date length
+				var ee_iL = String.valueOf(ee.getId()).length();         // record id length
+				var ee_ddL = ee.getDateAsString().length();              // record date length
+				var ee_cL = ee.getCategory().length();                   // record category length
 
 				// find the max length of each field to justify the border line,
 				// if records length are greater than the default length
@@ -138,35 +193,48 @@ public class ExpenseTrackerUtility {
 				if (ee_aL > aL) aL = ee_aL;
 				if (ee_iL > iL) iL = ee_iL;
 				if (ee_ddL > ddL) ddL = ee_ddL;
+				if (ee_cL > cL) cL = ee_cL;
 			}
 
 			// form a border
-			var border = "+" + "-".repeat(iL + 2) + "+" + "-".repeat(ddL + 2) + "+" + "-".repeat(dL + 2) + "+" + "-".repeat(aL + 2) + "+\n";
+			var border = "+" + "-".repeat(iL + 2) + "+" + "-".repeat(ddL + 2) + "+" + "-".repeat(dL + 2) + "+" + "-".repeat(aL + 2) + "+" + "-".repeat(cL + 2) + "+\n";
 			// form a field
-			var fields = String.format("| %-" + iL + "s | %-" + ddL + "s | %-" + dL + "s | %-" + aL + "s |\n",
-					"ID", "Date", "Description", "Amount");
+			var fields = String.format("| %-" + iL + "s | %-" + ddL + "s | %-" + dL + "s | %-" + aL + "s | %-" + cL + "s |\n",
+					"ID", "Date", "Description", "Amount", "Category");
 			// write in StringBuilder
 			StringBuilder tableFormat = new StringBuilder(border + fields + border); // generate fields with border
 
 			for (Expense ee : e) {
 				// form a record
-				var record = String.format("| %-" + iL + "s | %-" + ddL + "s | %-" + dL + "s | $%-" + (aL - 1) + "s |\n",
-						ee.getId(), ee.getDate(),ee.getDescription(), ee.getAmount());
+				var record = String.format("| %-" + iL + "s | %-" + ddL + "s | %-" + dL + "s | $%-" + (aL - 1) + "s | %-" + cL + "s |\n",
+						ee.getId(), ee.getDate(),ee.getDescription(), ee.getAmount(), ee.getCategory());
 
 				tableFormat.append(record + border); // appends every expense record with border
 			}
-			
+
 			// output data in a table format if expense record not empty
 			System.out.println(e.isEmpty() ? "\nNo Expenses record\n" : tableFormat.toString()); 
+		}
+
+		private static void showFiltered(List<Expense> e, String input) {
+
+			var category = input.split(" ")[2];
+			// list of expense record same categories 
+			List<Expense> expenseFiltered = e.stream().filter(f -> f.getCategory().equals(category)).toList();
+
+			if (expenseFiltered.isEmpty()) System.out.println("\nNon-existent expense category.\n");
+			else showAll(expenseFiltered);
+		}
+
+		protected static void show(List<Expense> e, String input) {
+
+			if (hasArg(input)) showFiltered(e, input);
+			else showAll(e);
 		}
 	}
 
 	// for summary command (i.e summary or summary --month 5)
 	protected class Summary {
-
-		private static boolean hasArg(String input) {
-			return input.split(" ").length > 1;
-		}
 
 		private static int getMonth(String input) {
 			return Integer.parseInt(input.split(" ")[2]);
@@ -174,19 +242,63 @@ public class ExpenseTrackerUtility {
 
 		private static void total(List<Expense> e) {
 			int total = e.stream().mapToInt(Expense::getAmount).sum();
-			System.out.println("\nTotal Expenses: $" + total + "\n");
+
+			var data = "| Total Expenses: $" + total + " |";
+			var border = "-".repeat(data.length());
+			System.out.println(border + "\n" + data + "\n" + border + "\n");
 		}
 
 		private static void total(List<Expense> e, int month) {
 			int total = e.stream()
 					.filter(t -> t.getDate().getMonth().getValue() == month)
 					.mapToInt(Expense::getAmount).sum();
-			System.out.println("\nTotal Expenses: $" + total + "\n");
+
+			// var data = "| Total Expenses: $" + total + " |";
+
+			var data = String.format("| Total expenses on %s: $%s |", 
+					LocalDate.of(2024, month, 1).getMonth().toString(), total);
+
+			var border = "-".repeat(data.length());
+			System.out.println(border + "\n" + data + "\n" + border + "\n");
 		}
 
 		protected static void check(List<Expense> expenseRecord, String input) {
-			if (hasArg(input)) total(expenseRecord, getMonth(input));
-			else total(expenseRecord);
+
+			if (hasArg(input)) {
+
+				if (getMonth(input) < 0 || getMonth(input) > 12 || getMonth(input) == 0) {
+					System.out.println("\nInvalid month.\n");
+					return;
+
+				} else {
+
+					boolean hasData = expenseRecord.stream()
+							.filter(e -> e.getDate().getMonthValue() == getMonth(input))
+							.count() != 0;
+
+					if (hasData) total(expenseRecord, getMonth(input));
+					else {
+						var month = LocalDate.of(2024, getMonth(input), 1).getMonth().toString();
+						System.out.println("\nNo data on month " + month + ".\n");
+					}
+				}
+
+			} else {
+
+				if (expenseRecord.isEmpty()) System.out.println("\nNo Data.\n");
+				else total(expenseRecord);
+			}
 		}
+	}
+	
+	
+	
+	// for set-budget command (i.e set-budget 20 --month 12)
+	protected class SETBUDGET {
+		
+		
+		
+		
+		
 	}
 }
