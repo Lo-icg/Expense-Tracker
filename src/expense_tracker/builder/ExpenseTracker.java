@@ -1,17 +1,14 @@
 package expense_tracker.builder;
 
-import java.util.LinkedList;
-import java.util.List;
-
 import expense_tracker.object.Expense;
 import expense_tracker.object.ExpenseList;
 
 public class ExpenseTracker extends ExpenseTrackerUtility {
 
-	private List<Expense> expenseList = new LinkedList<>();
+	// private List<Expense> expenseList = new LinkedList<>();
 
 	private ExpenseList<Expense> record = new ExpenseList<>();
-	
+
 	private ExpenseTracker(boolean running) {
 
 		while (running) {
@@ -26,18 +23,20 @@ public class ExpenseTracker extends ExpenseTrackerUtility {
 			var command = getCommand(input);
 
 			switch (command) {
-			case Command.ADD -> Add.saveTo(expenseList, input);
-			case Command.UPDATE -> Update.saveTo(expenseList, input);
-			case Command.LIST -> Expense_List.show(expenseList, input);
-			case Command.SUMMARY -> Summary.check(expenseList, input);
-			case Command.DELETE -> Delete.removeIfExist(expenseList, input);
+			case Command.ADD       -> Add.saveTo(record, input);
+			case Command.UPDATE    -> Update.saveTo(record.getExpenses(), input);
+			case Command.LIST      -> Expense_List.show(record.getExpenses(), input);
+			case Command.SUMMARY   -> Summary.check(record.getExpenses(), input);
+			case Command.DELETE    -> Delete.removeIfExist(record.getExpenses(), input);
+			case Command.SETBUDGET -> BUDGET.applyTo(record, input);
+			case Command.LISTBUDGET -> BUDGET.show(record.getMonth_budget());
+			case Command.GETBUDGET -> BUDGET.showFiltered(record.getMonth_budget(), input);
 			
-			//case Command.SETBUDGET ->;
 			}
 		}
 		read.close();
 	}
-	
+
 	public static void run() {
 		var launch = true;
 		new ExpenseTracker(launch);

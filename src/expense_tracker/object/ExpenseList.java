@@ -5,7 +5,15 @@ import java.util.List;
 
 public class ExpenseList<T> {
 	
-	List<T> expenses = new LinkedList<>();
+	private List<T> expenses = new LinkedList<>();
 	
+	private final int[] month_budget = new int[13]; // month starts with index 1 to 12, index 0 will be null;
+
+	public List<T> getExpenses() {
+		return expenses;
+	}
 	
+	public int[] getMonth_budget() {
+		return month_budget;
+	}
 }

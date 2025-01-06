@@ -1,10 +1,13 @@
 package expense_tracker.builder;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.Month;
 import java.util.List;
 import java.util.Scanner;
 
 import expense_tracker.object.Expense;
+import expense_tracker.object.ExpenseList;
 
 public class ExpenseTrackerUtility {
 
@@ -16,6 +19,8 @@ public class ExpenseTrackerUtility {
 		final static String LIST = "list";
 		final static String SUMMARY = "summary";
 		final static String SETBUDGET = "set-budget";
+		final static String LISTBUDGET = "list-budget";
+		final static String GETBUDGET = "get-budget";
 	}
 
 	static protected Scanner read = new Scanner(System.in);
@@ -24,6 +29,23 @@ public class ExpenseTrackerUtility {
 	static protected String prompt(String label) {
 		System.out.print(label);
 		return read.nextLine();
+	}
+	
+
+	// return only a valid option(y or n) of user input with a prompt defined in parameter
+	static protected char prompt2(String label) {
+		
+		char input;
+		System.out.print(label);
+		
+		do {
+			input = read.next().charAt(0);
+			if (input == 'y' || input == 'n') break;
+			else System.out.print("Invalid input try again: ");
+		} while (true);
+		
+		read.nextLine();
+		return input;
 	}
 
 	// return false if the user input is not valid and not matched to any regex pattern
@@ -36,11 +58,13 @@ public class ExpenseTrackerUtility {
 		var del = "delete --id \\d+";     // delete
 		var fsum = sum + " --month (?:\\d+|-\\d+)"; // summary with argument
 		var flist = list + " --category " + Category.cPattern; // list with argument
-		
-		var budget = "set-budget (\\d{1,9}|-\\d{1,9}) --month \\1"; // set-budget
-		
+
+		var budget = "set-budget --amount (?:\\d|-\\d)+ --month (?:\\d|-\\d)+"; // set-budget
+		var lsBudget = "list-budget"; // list-budget_month
+		var fBudget = "get-budget --month (?:\\d+|-\\d+)"; // get-budget --month n
+
 		//combine all pattern
-		var pattern = add + "|" + update + "|" + list + "|" + sum + "|" + del + "|" + fsum + "|" + flist + "|" + budget;
+		var pattern = add + "|" + update + "|" + list + "|" + sum + "|" + del + "|" + fsum + "|" + flist + "|" + budget + "|" + lsBudget + "|" + fBudget;
 		return !input.matches(pattern);
 	}
 
@@ -105,11 +129,23 @@ public class ExpenseTrackerUtility {
 		}
 
 	}
+	
+	static final int currentMonth = LocalDate.now().getMonthValue();
+	static final String currentMonthName = LocalDate.now().getMonth().toString(); 
 
 	// for add command (e.g, add --description "Food" --amount 100)
 	protected class Add {
-
-		protected static void saveTo(List<Expense> e, String input) {
+		
+		private static boolean budgetWillExceed(ExpenseList<Expense> record, int amountToAdd) {
+			
+			if (record.getMonth_budget()[currentMonth] == 0) return false;
+			
+		    return record.getExpenses().stream()
+					 .filter(ee -> ee.getDate().getMonthValue() == currentMonth)
+					 .mapToInt(Expense::getAmount).sum() + amountToAdd > record.getMonth_budget()[currentMonth];
+		}
+		
+		protected static void saveTo(ExpenseList<Expense> record, String input) {
 
 			if (getAmount(input) < 0) {
 				System.out.println("\nNegative amount not allowed.\n");
@@ -120,8 +156,23 @@ public class ExpenseTrackerUtility {
 				System.out.println("\nAmount zero not allowed\n");
 				return;
 			}
-			var id = Expense.idAutoIncrement();
-			e.add(new Expense(id, getDescription(input), Category.input(), getAmount(input)));
+			
+						
+			if (budgetWillExceed(record, getAmount(input))) {
+				
+				var in = prompt2("\n[Warning] You will exceed your budget in this month(" + currentMonth + ")\nTo continue type y or n to cancel: ");
+				
+				if (in == 'y') {
+					System.out.println();
+					var id = Expense.idAutoIncrement();
+					record.getExpenses().add(new Expense(id, getDescription(input), Category.input(), getAmount(input)));
+				}
+				else System.out.println();
+				
+			} else {
+				var id = Expense.idAutoIncrement();
+				record.getExpenses().add(new Expense(id, getDescription(input), Category.input(), getAmount(input)));
+			}
 		}
 	}
 
@@ -290,15 +341,139 @@ public class ExpenseTrackerUtility {
 			}
 		}
 	}
-	
-	
-	
-	// for set-budget command (i.e set-budget 20 --month 12)
-	protected class SETBUDGET {
+
+	// for set-budget command (i.e set-budget --amount 23 --month 2)
+	protected class BUDGET {
+
+		private static boolean invalidBudget(int budget) {
+			return budget == 0 || budget < 0;
+		}
+
+		private static boolean invalidMonth(int month) {
+			return month == 0 || month < 0 || month > 12;
+		}
+
+		private static boolean invalidData(String input) {
+
+			var valid_budget_format = true;
+			var valid_month_format = true;
+
+			var budget = 0;
+			var month = 0;
+
+			try {
+				budget = Integer.parseInt(input.split(" ")[2]);  // parse to int budget value format
+			} catch (NumberFormatException e2) {
+				valid_budget_format = false;
+			}
+
+			try {
+				month = Integer.parseInt(input.split(" ")[4]);  // parse to int month value format
+			} catch (NumberFormatException e2) {
+				valid_month_format = false;
+			}
+
+			if (!valid_budget_format && !valid_month_format || invalidBudget(budget) && invalidMonth(month)) {
+				System.out.println("Invalid month and budget amount.\n");
+				return true;
+			}
+
+			if (!valid_budget_format || invalidBudget(budget)) {
+				System.out.println("Invalid budget amount.\n");
+				return true;
+			}
+
+			if (!valid_month_format || invalidMonth(month)) {
+				System.out.println("Invalid month.\n");
+				return true;
+			}
+
+			return false;
+		}
+
+		private static void warnIfBudgetExceed(ExpenseList<Expense> record) {
+			
+			var budgetExceeds = record.getExpenses().stream()
+					.filter(e -> e.getDate().getMonthValue() == currentMonth)
+					.mapToInt(Expense::getAmount).sum() > record.getMonth_budget()[currentMonth];
+			
+			if (budgetExceeds) System.out.println("\n[WARNING] You exceeds your budget in this month " + currentMonthName + ".");	
+		}
+		
+		protected static void applyTo(ExpenseList<Expense> e, String input) {
+
+			//  set-budget --amount 23 --month 
+
+			if (invalidData(input)) return;
+			
+			else {
+				
+				var budget = Integer.parseInt(input.split(" ")[2]);
+				var monthValue =  Integer.parseInt(input.split(" ")[4]);
+				
+				e.getMonth_budget()[monthValue] = budget; // budget set
+				
+				String month = LocalDate.of(2024, monthValue, 1).getMonth().toString();
+				var info = "| Budget set to $" + budget + " on month " + month + " |";
+				var borderLine = "-".repeat(info.length());
+				warnIfBudgetExceed(e);
+				System.out.println(borderLine + "\n" + info + "\n" + borderLine + "\n");
+				
+			}
+		}
 		
 		
+		protected static void show(int[] budget_month) {
+			
+			var m = 9; // Month = September
+			var b = 7; // Budget = Not set
+			
+			for (int v : budget_month) {
+				if (String.valueOf(v).length() > b) b = String.valueOf(v).length();
+			}
+			
+			var borderLine = "+" + "-".repeat(m + 2) + "+" + "-".repeat(b + 2) + "+";
+			var field = String.format("| %-" + m + "s | %-" + b + "s |", "Month", "Budget");
+			
+			System.out.println(borderLine + "\n" + field + "\n" + borderLine);
+			
+			Month[] months = Month.values();
+			
+			for (int i = 0; i < budget_month.length - 1; i++) {
+				
+				var record = String.format("| %-" + m + "s | %-" + b + "s |"
+						, months[i], (budget_month[i + 1] == 0 ? "Not set" : budget_month[i + 1])); 
+				System.out.println(record + "\n" + borderLine);
+				
+			}
+			System.out.println();
+		}
 		
-		
-		
+		protected static void showFiltered(int[] budget, String input) {
+			
+			
+			var monthValue = 0;
+			var validMonthValue = true;
+			
+			try {
+				//get-budget --month 2
+				monthValue = Integer.parseInt(input.split(" ")[2]);
+				if (monthValue < 1 || monthValue > 12) validMonthValue = false;
+			} catch (NumberFormatException e) {
+				validMonthValue = false;
+			}
+			
+			if (!validMonthValue) {
+				System.out.println("Invalid value for Month of Year.\n");
+				return;
+			}
+			
+			Month month = Month.of(monthValue);
+			var data = "| Month: " + month + " | Budget: " + (budget[monthValue] == 0 ? "Not set" : budget[monthValue]) + " |";
+			var borderLine = "-".repeat(data.length());
+			
+			System.out.println(borderLine + "\n" + data + "\n" + borderLine + "\n");
+		}
+
 	}
 }
