@@ -1,10 +1,11 @@
-package expense_tracker.object;
+package eTracker.object;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 
 public class Expense {
 	
 	private String description;
+	private String category;
 	private int amount;
 	
 	private int id;
@@ -16,6 +17,12 @@ public class Expense {
 	}
 	public void setDescription(String description) {
 		this.description = description;
+	}
+	public String getCategory() {
+		return category;
+	}
+	public void setCategory(String category) {
+		this.category = category;
 	}
 	public int getAmount() {
 		return amount;
@@ -42,6 +49,15 @@ public class Expense {
 	public Expense(int id, String desc, int amount) {
 		this.id = id;
 		description = desc;
+		this.amount = amount;
+		date = LocalDate.now();
+		System.out.printf("\nExpense added successfully (ID: %s)\n\n", id_);
+	}
+	
+	public Expense(int id, String desc, String category, int amount) {
+		this.id = id;
+		description = desc;
+		this.category = category;
 		this.amount = amount;
 		date = LocalDate.now();
 		System.out.printf("\nExpense added successfully (ID: %s)\n\n", id_);
