@@ -1,4 +1,4 @@
-package expense_tracker.object;
+package eTracker.object;
 
 import java.util.LinkedList;
 import java.util.List;
